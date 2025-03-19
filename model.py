@@ -15,20 +15,24 @@ class GraphConv(nn.Module):
             self.bias = nn.Parameter(torch.FloatTensor(output_dim))
         else:
             self.bias = None
-        self.activation = nn.ReLU() if activation is None else activation
+        self.activation = activation
         self.normalize_embedding = normalize_embedding
 
         # Initialize parameters
         self.reset_parameters()
 
     def reset_parameters(self):
-        nn.init.kaiming_uniform_(self.weight, mode='fan_in', nonlinearity='relu')
+        gain = nn.init.calculate_gain('leaky_relu', param=0.2)
+        nn.init.xavier_uniform_(self.weight, gain=gain)
         if self.bias is not None:
-            nn.init.constant_(self.bias, 0.0)
+            nn.init.zeros_(self.bias)
+
 
     def forward(self, x, adj):
         if self.dropout > 0.001:
             x = self.dropout_layer(x)
+            
+        adj = adj.clamp(min=0.0)
         
         # Add self-loops to adjacency matrix (Ã = A + I)
         batch_size, num_nodes, _ = adj.size()
@@ -37,6 +41,7 @@ class GraphConv(nn.Module):
         
         # Compute degree matrix D̃ and normalize (D̃^{-1/2} Ã D̃^{-1/2})
         degree = adj_with_self.sum(dim=-1)  # (batch_size, num_nodes)
+        degree = degree + 1e-5
         d_inv_sqrt = degree.pow(-0.5)
         d_inv_sqrt[torch.isinf(d_inv_sqrt)] = 0  # Handle zero division if any
         d_inv_sqrt = d_inv_sqrt.unsqueeze(-1)  # (batch_size, num_nodes, 1)
@@ -52,7 +57,8 @@ class GraphConv(nn.Module):
             y += self.bias
             
         # Apply activation
-        y = self.activation(y)
+        if self.activation is not None:
+            y = self.activation(y)
         
         # Normalize embedding
         if self.normalize_embedding:
@@ -66,9 +72,9 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         self.bn = bn
         self.num_layers = num_layers
-        self.proj_head = nn.Sequential(nn.Linear(embedding_dim, embedding_dim), nn.ReLU(inplace=True), nn.Linear(embedding_dim, embedding_dim))
+        self.proj_head = nn.Sequential(nn.Linear(embedding_dim, embedding_dim), nn.LeakyReLU(negative_slope=0.2, inplace=True), nn.Linear(embedding_dim, embedding_dim))
         self.bias = bias
-        self.act = nn.ReLU()
+        self.act = nn.LeakyReLU(negative_slope=0.2)
         self.use_projection_head = use_projection_head
         self.conv_first, self.conv_block, self.conv_last = self.build_conv_layers(input_dim, hidden_dim, embedding_dim, num_layers, normalize=True, dropout=dropout, bias = bias)
         
@@ -78,7 +84,7 @@ class Encoder(nn.Module):
         conv_block = nn.ModuleList(
                 [GraphConv(input_dim=hidden_dim, output_dim=hidden_dim, bias=bias, activation=self.act, normalize_embedding=normalize, dropout=dropout) 
                  for i in range(num_layers-2)])
-        conv_last = GraphConv(input_dim=hidden_dim, output_dim=embedding_dim, bias=bias, activation=self.act, normalize_embedding=normalize, dropout=dropout)
+        conv_last = GraphConv(input_dim=hidden_dim, output_dim=embedding_dim, bias=bias, activation=None, normalize_embedding=normalize, dropout=dropout)
         return conv_first, conv_block, conv_last
 
     def apply_bn(self, x):
@@ -90,9 +96,11 @@ class Encoder(nn.Module):
         if self.bn:
             x = self.apply_bn(x)
         for i in range(self.num_layers-2):
+            residual = x
             x = self.conv_block[i](x,adj)
             if self.bn:
                 x = self.apply_bn(x)
+            x = x + residual
         x = self.conv_last(x,adj)
         out, _ = torch.max(x, dim=1)
         
@@ -108,7 +116,7 @@ class Att_Decoder(nn.Module):
         self.bn = bn
         self.num_layers = num_layers
         self.bias = bias
-        self.act = nn.ReLU()
+        self.act = nn.LeakyReLU(negative_slope=0.2)
         self.conv_first, self.conv_block, self.conv_last = self.build_conv_layers(input_dim, hidden_dim, embedding_dim, num_layers, normalize=True, dropout=dropout, bias = bias)
         
 
@@ -117,7 +125,7 @@ class Att_Decoder(nn.Module):
         conv_block = nn.ModuleList(
                 [GraphConv(input_dim=hidden_dim, output_dim=hidden_dim, bias=bias, activation=self.act, normalize_embedding=normalize, dropout=dropout) 
                  for i in range(num_layers-2)])
-        conv_last = GraphConv(input_dim=hidden_dim, output_dim=embedding_dim, bias=bias, activation=self.act, normalize_embedding=normalize, dropout=dropout)
+        conv_last = GraphConv(input_dim=hidden_dim, output_dim=embedding_dim, bias=bias, activation=None, normalize_embedding=normalize, dropout=dropout)
         return conv_first, conv_block, conv_last
 
     def apply_bn(self, x):
@@ -129,10 +137,11 @@ class Att_Decoder(nn.Module):
         if self.bn:
             x = self.apply_bn(x)
         for i in range(self.num_layers-2):
+            resuidal = x
             x = self.conv_block[i](x,adj)
-            x = self.act(x)
             if self.bn:
                 x = self.apply_bn(x)
+            x = x + resuidal
         x = self.conv_last(x,adj)
         return x
 

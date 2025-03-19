@@ -23,7 +23,7 @@ def arg_parse():
     parser.add_argument('--DS', dest='DS', default ='BZR', help='dataset name')
     parser.add_argument('--max-nodes', dest='max_nodes', type=int, default=0, help='Maximum number of nodes (ignore graghs with nodes exceeding the number.')
     parser.add_argument('--num_epochs', dest='num_epochs', default=100, type=int, help='total epoch number')
-    parser.add_argument('--batch-size', dest='batch_size', default=2000, type=int, help='Batch size.')
+    parser.add_argument('--batch-size', dest='batch_size', default=512, type=int, help='Batch size.')
     parser.add_argument('--hidden-dim', dest='hidden_dim', default=256, type=int, help='Hidden dimension')
     parser.add_argument('--output-dim', dest='output_dim', default=128, type=int, help='Output dimension')
     parser.add_argument('--num-gc-layers', dest='num_gc_layers', default=2, type=int, help='Number of graph convolution layers before each pooling')
@@ -37,6 +37,7 @@ def arg_parse():
     parser.add_argument('--patience', dest='patience', default=5, type=int, help='Patience for LR scheduler')
     parser.add_argument('--early_stopping_patience', dest='early_stopping_patience', default=10, type=int, help='Patience for early stopping')
     parser.add_argument('--threshold_lr', dest='threshold_lr', default=1e-7, type=float, help='Threshold for learning rate scheduler')
+    parser.add_argument('--anamoly-label', dest='anamoly_label', default=1, type=int, help='Anamoly label')
     return parser.parse_args()
 
 def setup_seed(seed):
@@ -46,14 +47,28 @@ def setup_seed(seed):
      random.seed(seed)
      torch.backends.cudnn.deterministic = True
         
-def gen_ran_output(h0, adj, model, vice_model):
-    for (adv_name,adv_param), (name,param) in zip(vice_model.named_parameters(), model.named_parameters()):
+
+def gen_ran_output(h0, adj, model, vice_model, eta, layer_sigmas):
+    for (adv_name, adv_param), (name, param) in zip(vice_model.named_parameters(), model.named_parameters()):
         if name.split('.')[0] == 'proj_head':
-            adv_param.data = param.data
+            # Direct copy for projection head (no noise)
+            adv_param.data = param.data.clone()
         else:
-            adv_param.data = param.data + 1.0 * torch.normal(0,torch.ones_like(param.data)*param.data.std()).to(param.device)    
-    x1_r,Feat_0= vice_model(h0, adj)
-    return x1_r,Feat_0
+            # Extract layer type from parameter name
+            layer_type = name.split('.')[0]  # 'conv_first', 'conv_block', or 'conv_last'
+            
+            # Get σ_l for this layer type
+            sigma_l = layer_sigmas.get(layer_type, 0.0)  # Default to 0 if undefined
+            
+            # Generate Gaussian noise Δθ_l ∼ N(0, σ_l²)
+            noise = torch.randn_like(param.data) * sigma_l
+            
+            # Apply perturbation: θ́_l = θ_l + η·Δθ_l
+            adv_param.data = param.data + eta * noise
+    
+    # Forward pass with perturbed weights
+    x1_r, Feat_0 = vice_model(h0, adj)
+    return x1_r, Feat_0
 
 def train(dataset, data_test_loader, NetG, noise_NetG, args, device):    
     optimizerG = torch.optim.Adam(NetG.parameters(), lr=args.lr)
@@ -73,12 +88,20 @@ def train(dataset, data_test_loader, NetG, noise_NetG, args, device):
             adj = Variable(data['adj'].float(), requires_grad=False).to(device)
 
             h0 = Variable(data['feats'].float(), requires_grad=False).to(device)
+            h0 = (h0 - h0.mean(dim=1, keepdim=True)) / (h0.std(dim=1, keepdim=True) + 1e-8)
             adj_label = Variable(data['adj_label'].float(), requires_grad=False).to(device)
 
             #First Encoding of input
             x1, a0 = NetG.shared_encoder(h0, adj)
             #Perturb Encoding of input
-            x1_1, a0_1 = gen_ran_output(h0, adj, NetG.shared_encoder, noise_NetG)
+            # Hyperparameters For Contrasive Learning Perturbation 
+            eta = 0.1  # Global noise scale
+            layer_sigmas = {
+                'conv_first': 0.01,  # First GNN layer
+                'conv_block': 0.02,   # Middle layers
+                'conv_last': 0.03     # Final layer
+            }
+            x1_1, a0_1 = gen_ran_output(h0, adj, NetG.shared_encoder, noise_NetG, eta, layer_sigmas)
 
             #Reconstruction of input and Encoding of reconstructed input
             x_fake, a_fake, x2, a1 = NetG(x1,adj)
@@ -99,6 +122,13 @@ def train(dataset, data_test_loader, NetG, noise_NetG, args, device):
             optimizerG.zero_grad()
             lossG.backward()
 
+            torch.nn.utils.clip_grad_norm_(NetG.parameters(), max_norm=5.0)    
+            # After backward(), check gradients
+            for name, param in NetG.named_parameters():
+                if param.grad is not None and torch.isnan(param.grad).any():
+                    print(f"NaN gradients detected in {name}")
+                    param.grad[torch.isnan(param.grad)] = 0  # Optional: Zero out NaN gradients
+            
             optimizerG.step()
             total_lossG += lossG.item()
                    
@@ -120,7 +150,6 @@ def train(dataset, data_test_loader, NetG, noise_NetG, args, device):
                loss_graph = F.mse_loss(a0, a1, reduction='none').mean(dim=1)
 
                loss_=loss_node+loss_graph
-
                loss_ = loss_.cpu().detach().numpy()
                
                loss.append(loss_)
@@ -188,7 +217,7 @@ def main(args):
     else:
         max_nodes_num = args.max_nodes
     
-    print("Total No.of Graphs in the dataset: ", datanum, '\n')
+    print("Total No.of Graphs in the dataset: ", datanum)
 
     #Split the training dataset into training and testing
     if not test_available:
@@ -205,28 +234,29 @@ def main(args):
     a = 0
     b = 0
     for graph in graphs_train_1:
-        if graph.graph['label'] == 0:
+        if graph.graph['label'] != args.anamoly_label:
             graphs_train.append(graph)
         else:
             graphs_test.append(graph)
          
 
     for graph in graphs_test:
-        if graph.graph['label'] != 0:
+        if graph.graph['label'] == args.anamoly_label:
             b += 1
             graph.graph['label'] = 1
         else:
             a += 1
+            graph.graph['label'] = 0
 
     
     
     num_train = len(graphs_train)
     num_test = len(graphs_test)
     
-    print("No.of Graphs in the training dataset: ", num_train, '\n')
-    print("No.of Graphs in the testing dataset: ", num_test, '\n')
-    print("Anamoly Graphs in Test: ", b, '\n')
-    print("Non-Anamoly Graphs in Test: ", a, '\n')
+    print("No.of Graphs in the training dataset: ", num_train)
+    print("No.of Graphs in the testing dataset: ", num_test)
+    print("Anamoly Graphs in Test: ", b)
+    print("Non-Anamoly Graphs in Test: ", a)
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     

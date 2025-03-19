@@ -132,7 +132,7 @@ The following arguments can be passed to the `main.py` script:
 - `--DS`: Dataset name (default: `BZR`).
 - `--max-nodes`: Maximum number of nodes (default: `0`, meaning no limit).
 - `--num_epochs`: Total number of epochs (default: `100`).
-- `--batch-size`: Batch size (default: `2000`).
+- `--batch-size`: Batch size (default: `512`).
 - `--hidden-dim`: Hidden dimension size (default: `256`).
 - `--output-dim`: Output dimension size (default: `128`).
 - `--num-gc-layers`: Number of graph convolution layers (default: `2`).
@@ -146,6 +146,7 @@ The following arguments can be passed to the `main.py` script:
 - `--patience`: Patience for learning rate scheduler (default: `5`).
 - `--early_stopping_patience`: Patience for early stopping (default: `10`).
 - `--threshold_lr`: Threshold for learning rate scheduler (default: `1e-7`).
+- `--anamoly-label`: Anomaly Class label (default: `1`).
 
 ---
 
@@ -195,7 +196,6 @@ The datasets used in the experiments have the following characteristics:
 
 2. **Hyperparameter Sensitivity**:
    - The best results were achieved with specific combinations of **hidden embedding size** and **number of GCN layers**, as indicated in the parentheses in the results table.
-   - Other hyperparameters, such as **batch size**, did not significantly impact the results when other parameters were held constant.
 
 3. **Learning Rate Reduction**:
    - A learning rate reduction strategy was applied during training. This helped stabilize the training process and prevent overfitting.
