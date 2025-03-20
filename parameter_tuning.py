@@ -1,5 +1,5 @@
 import itertools
-from GLADC.main import arg_parse, main
+from main import arg_parse, main
 
 hyperparameter_grid = {
     'lr': [0.0001],  # Learning rates to test

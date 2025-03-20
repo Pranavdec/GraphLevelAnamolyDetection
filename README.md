@@ -99,83 +99,6 @@ The program is designed to work on graph datasets with 2 classes, where the clas
 
 https://chrsmrrs.github.io/datasets/docs/datasets/
 
----
-
-## Architecture
-
-The model architecture consists of the following components:
-
-1. **Graph Convolutional Encoder**:  
-   A graph convolutional network (GCN) is used to encode the input graph and nodes with features.
-
-2. **Perturbed Version for Contrastive Learning**:  
-   A perturbed version of the graph is created for contrastive learning.
-
-3. **Reconstruction and Anomaly Detection**:  
-   The reconstructed graph is passed through the same GCN encoder. Reconstruction loss is used to detect anomalies.
-
----
-## Usage
-
-To run the anomaly detection model, execute the `main.py` script with the desired arguments. The script will train the model on the specified dataset and evaluate its performance.
-
-```bash
-python main.py --datadir dataset --DS BZR --max-nodes 0 --num_epochs 100 --batch-size 2000 --hidden-dim 256 --output-dim 128 --num-gc-layers 2 --nobn True --dropout 0.1 --lr 0.00001 --nobias True --feature deg-num --seed 2 --contrasive_lg True --patience 5 --early_stopping_patience 10 --threshold_lr 1e-7
-```
----
-
-## Arguments
-
-The following arguments can be passed to the `main.py` script:
-
-- `--datadir`: Directory where the dataset is located (default: `dataset`).
-- `--DS`: Dataset name (default: `BZR`).
-- `--max-nodes`: Maximum number of nodes (default: `0`, meaning no limit).
-- `--num_epochs`: Total number of epochs (default: `100`).
-- `--batch-size`: Batch size (default: `512`).
-- `--hidden-dim`: Hidden dimension size (default: `256`).
-- `--output-dim`: Output dimension size (default: `128`).
-- `--num-gc-layers`: Number of graph convolution layers (default: `2`).
-- `--nobn`: Disable batch normalization (default: `True`).
-- `--dropout`: Dropout rate (default: `0.1`).
-- `--lr`: Learning rate (default: `0.00001`).
-- `--nobias`: Disable bias (default: `True`).
-- `--feature`: Node feature type (default: `deg-num`). Options: `deg-num`, `default`.
-- `--seed`: Random seed (default: `2`).
-- `--contrasive_lg`: Enable contrastive learning (default: `True`).
-- `--patience`: Patience for learning rate scheduler (default: `5`).
-- `--early_stopping_patience`: Patience for early stopping (default: `10`).
-- `--threshold_lr`: Threshold for learning rate scheduler (default: `1e-7`).
-- `--anamoly-label`: Anomaly Class label (default: `1`).
-
----
-
-## Results
-
-Below are the results of experiments conducted on a few datasets using **Graph Convolutional Networks (GCN)** with and without **Contrastive Learning**. The evaluation metrics used are **AUC ROC** (Area Under the Receiver Operating Characteristic Curve) and **AUC PR** (Area Under the Precision-Recall Curve). The values in parentheses represent the **hidden embedding size** and the **number of GCN layers** in the encoder, which were found to yield the best metrics after testing multiple hyperparameter combinations.
-
----
-
-### Results Table
-
-#### AUC ROC Scores
-
-| Dataset Name | GCN with Contrastive Learning (AUC ROC) | GCN without Contrastive Learning (AUC ROC) |
-|--------------|-----------------------------------------|--------------------------------------------|
-| BZR          | 0.62 (128, 2)                          | 0.62 (128, 2)                              |
-| COX2         | 0.57 (128, 4)                          | 0.57 (128, 4)                              |
-| DHFR         | 0.56 (256, 3)                          | 0.56 (256, 3)                              |
-
-#### AUC PR Scores
-
-| Dataset Name | GCN with Contrastive Learning (AUC PR) | GCN without Contrastive Learning (AUC PR) |
-|--------------|----------------------------------------|-------------------------------------------|
-| BZR          | 0.68                                   | 0.68                                      |
-| COX2         | 0.66                                   | 0.66                                      |
-| DHFR         | 0.80                                   | 0.80                                      |
-
----
-
 ### Datasets Description
 
 The datasets used in the experiments have the following characteristics:
@@ -185,43 +108,120 @@ The datasets used in the experiments have the following characteristics:
 | DHFR         | 756          | 368             | 388            | 295                       | 93                           |
 | COX2         | 467          | 289             | 178            | 102                       | 76                           |
 | BZR          | 405          | 255             | 150            | 86                        | 64                           |
+| AIDS         | 2000         | 1285            | 715            | 400                       | 315                          |
 
 ---
 
-### Observations
+## Architecture
 
-1. **Performance Comparison**:
-   - The results indicate that **GCN with Contrastive Learning** performs similarly to **GCN without Contrastive Learning** across all datasets in terms of both **AUC ROC** and **AUC PR** scores.
-   - This suggests that, for these specific datasets, the addition of contrastive learning does not significantly enhance anomaly detection performance.
+The model architecture consists of the following components:
 
-2. **Hyperparameter Sensitivity**:
-   - The best results were achieved with specific combinations of **hidden embedding size** and **number of GCN layers**, as indicated in the parentheses in the results table.
+1. **Graph Convolutional Encoder**:  
+   A graph convolutional network (GCN) is used to encode the input graph and nodes with features with Resuidal layers.
 
-3. **Learning Rate Reduction**:
-   - A learning rate reduction strategy was applied during training. This helped stabilize the training process and prevent overfitting.
-    - The model was trained with a low initial learning rate, which was reduced by a factor of 10 based on validaiton AUC ROC AUC PR and loss values.
+2. **Perturbed Version for Contrastive Learning**:  
+   A perturbed version of the graph is created for contrastive learning.
 
-4. **Model Robustness**:
-   - The model demonstrates consistent performance across datasets of varying sizes and anomaly distributions, indicating robustness to different data characteristics.
+3. **Reconstruction and Anomaly Detection**:  
+   The reconstructed graph is passed through the same GCN encoder. Reconstruction loss is used to detect anomalies.
 
-5. **Contrastive Learning Impact**:
-   - While contrastive learning did not improve performance in these experiments, it may still be beneficial for other datasets or tasks where the separation between normal and anomalous graphs is less distinct.
+---
+## Usage
+Train the model with:
+```bash
+python main.py --datadir dataset --DS BZR --batch-size 2000 --hidden-dim 256 --output-dim 128 --num_epochs 100
+```
+
+### Key Arguments
+| Argument | Description | Default |
+|----------|-------------|---------|
+| `--DS` | Dataset name | `BZR` |
+| `--hidden-dim` | Hidden layer size | `256` |
+| `--output-dim` | Output embedding size | `128` |
+| `--num-gc-layers` | Number of GCN layers | `2` |
+| `--contrasive_lg` | Enable contrastive learning | `True` |
+| `--feature` | Node features (`deg-num`/`default`) | `deg-num` |
 
 ---
 
-### Conclusion
+# Results and Observations  
 
-The experiments demonstrate that the proposed GCN-based anomaly detection model performs well across multiple datasets. However, the addition of contrastive learning did not yield significant improvements in this case. Key findings include:
-
-- The model is robust to variations in dataset size and anomaly distribution.
-- Hyperparameters such as **hidden embedding size** and **number of GCN layers** play a critical role in achieving optimal performance.
-- Contrastive learning may not always enhance performance, and its effectiveness could depend on the specific characteristics of the dataset.
-
-**Future Work**:
-- Explore alternative contrastive learning strategies or architectures.
-- Evaluate the model on datasets with more challenging anomaly detection scenarios to further assess its capabilities.
+## Experimental Setup  
+Experiments were conducted on **4 datasets** (BZR, COX2, DHFR, AIDS) with varying graph sizes and anomaly ratios.  
+- **Evaluation Metrics**: AUC ROC (Area Under ROC Curve) and AUC PR (Area Under Precision-Recall Curve).  
+- **Baseline Models**:  
+  - **GCN with Contrastive Learning**: Combines graph convolutional layers with contrastive loss.  
+  - **GCN without Contrastive Learning**: Standard GCN with reconstruction loss only.  
+- **Hyperparameters**: Tuned individually for each dataset (hidden dimension, GCN layers, output dimension).  
 
 ---
+
+## Results  
+
+### Model Configuration 1: ReLU Activation, Adam Optimizer, No Residual Connections  
+#### AUC ROC Scores  
+| Dataset | GCN **with** Contrastive Learning | GCN **without** Contrastive Learning |  
+|---------|------------------------------------|---------------------------------------|  
+| BZR     | 0.62 (128, 2, 128)                | 0.62 (128, 2, 128)                   |  
+| COX2    | 0.57 (128, 4, 128)                | 0.57 (128, 4, 128)                   |  
+| DHFR    | 0.56 (256, 3, 128)                | 0.56 (256, 3, 128)                   |  
+
+#### AUC PR Scores  
+| Dataset | GCN **with** Contrastive Learning | GCN **without** Contrastive Learning |  
+|---------|------------------------------------|---------------------------------------|  
+| BZR     | 0.68                               | 0.68                                  |  
+| COX2    | 0.66                               | 0.66                                  |  
+| DHFR    | 0.80                               | 0.80                                  |  
+
+---
+
+### Model Configuration 2: LeakyReLU Activation, Adam Optimizer, Residual Connections  
+#### AUC ROC Scores  
+| Dataset | GCN **with** Contrastive Learning | GCN **without** Contrastive Learning |  
+|---------|------------------------------------|---------------------------------------|  
+| BZR     | 0.69 (512, 4, 256)                | 0.69 (512, 4, 256)                   |  
+| COX2    | 0.55 (64, 3, 256)                 | 0.55 (64, 3, 256)                    |  
+| DHFR    | 0.50 (64, 3, 128)                 | 0.50 (64, 3, 128)                    |  
+| AIDS    | 0.67 (512, 4, 128)                | 0.67 (512, 4, 128)                   |  
+
+#### AUC PR Scores  
+| Dataset | GCN **with** Contrastive Learning | GCN **without** Contrastive Learning |  
+|---------|------------------------------------|---------------------------------------|  
+| BZR     | 0.76                               | 0.76                                  |  
+| COX2    | 0.64                               | 0.64                                  |  
+| DHFR    | 0.77                               | 0.77                                  |  
+| AIDS    | 0.84                               | 0.84                                  |  
+
+---
+
+## Key Observations  
+
+### 1. **Performance of Contrastive Learning**  
+- **No Significant Improvement**: Contrastive learning **did not enhance performance** in anomaly detection for any dataset. Both models (with/without contrastive learning) achieved **identical AUC ROC and AUC PR scores** across all configurations.  
+- **Dominant Reconstruction Loss**: The lack of improvement may stem from the overwhelming contribution of the reconstruction loss (encoder-decoder architecture) compared to the contrastive loss, diminishing its impact during training.  
+
+### 2. **Hyperparameter Sensitivity**  
+- **Critical Hyperparameters**: Performance heavily depended on combinations of **hidden dimension**, **number of GCN layers**, and **output dimension** (see values in parentheses).  
+- **Dataset-Specific Tuning**: Optimal hyperparameters varied across datasets (e.g., BZR required larger hidden dimensions with residual connections).  
+
+### 3. **Architectural Robustness**  
+- **Addressing Vanishing Gradients**:  
+  - The ReLU-based model (no residuals) faced **vanishing gradients** on datasets like AIDS, Tox21_HSE, and Tox21_p53.  
+  - Switching to **LeakyReLU activations** and **residual connections** stabilized training and improved convergence.  
+- **Learning Rate Strategy**: A low initial learning rate with reduction based on validation metrics (AUC ROC, AUC PR, loss) prevented overfitting and enhanced stability.  
+
+### 4. **Dataset Generalization**  
+- **Scalability**: The model showed robustness across datasets of varying sizes and anomaly ratios.  
+- **Limitation**: Contrastive learning may still be beneficial for datasets with **subtler distinctions** between normal and anomalous graphs.  
+
+### 5. **Future Directions**  
+- **Larger Datasets**: Testing on datasets with **more graphs** could better validate the utility of contrastive learning.  
+- **Loss Balancing**: Adjusting the weight of contrastive loss relative to reconstruction loss might amplify its impact.  
+
+--- 
+
+## Conclusion  
+While contrastive learning did not improve performance in these experiments, architectural modifications (residual connections, LeakyReLU) effectively addressed training challenges like vanishing gradients. Further exploration on larger datasets and loss-balancing strategies is recommended to fully leverage contrastive learning.
 
 ## Contributing
 
